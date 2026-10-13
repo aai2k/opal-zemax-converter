@@ -57,6 +57,20 @@ test("fitted OPAL asphere reproduces the Zemax even asphere", () => {
   }
 });
 
+test("conic -1 even asphere is copied to OPAL U-type e2=1, HA=1 and back", () => {
+  const src = DOUBLET_ZMX.replace("CONI -1.2", "CONI -1").replace("PARM 1 0", "PARM 1 1e-4");
+  const { opj: o, report } = convertZmxToOpj(parseZmx(src, "p.zmx"), testLibrary(), defaultZmxToOpjOptions());
+  assert.equal(o.asphere!.order[1], 6);
+  assert.deepEqual(o.asphere!.coef.slice(0, 4), [1, 1, Math.fround(2e-6), Math.fround(-1e-9)]);
+  close(o.curv[1], -0.0198, 1e-15);
+  assert.ok(report.notes.some((n) => /terms copied \(max sag error [0-9.]+e-1\d mm\)/.test(n)), report.notes.join("\n"));
+  const back = parseZmx(convertOpjToZmx(o, testLibrary(), defaultOpjToZmxOptions(), "P.OPJ").zmx, "q.zmx");
+  const s = back.surfaces.find((x) => x.type === "EVENASPH")!;
+  assert.equal(s.conic, -1);
+  assert.deepEqual([1, 2, 3, 4].map((i) => s.parm.get(i) ?? 0), [0, 2e-6, -1e-9, 0]);
+  close(s.curv, -0.0198, 1e-15);
+});
+
 test("OPJ -> ZMX -> OPJ with an exact companion catalog", () => {
   const a = doublet();
   const r = convertOpjToZmx(a, new GlassLibrary(), defaultOpjToZmxOptions(), "DOUBLET.OPJ");

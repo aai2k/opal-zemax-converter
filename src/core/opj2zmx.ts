@@ -126,6 +126,17 @@ function fitEvenAsphere(sag: (r: number) => number, c: number, k0: number, h: nu
   return best;
 }
 
+// U-type with e2 = 1 is a paraboloid plus even terms: EVENASPH with k = -1 holds it exactly up to r^16.
+function paraboloidParms(ha: number, coefs: number[]): number[] | null {
+  let n = coefs.length;
+  while (n && coefs[n - 1] === 0) n--;
+  if (n > 7) return null;
+  const h = shortF32(ha);
+  const parm = Array(8).fill(0);
+  for (let q = 0; q < n; q++) parm[q + 1] = shortF32(coefs[q]) / h ** (2 * (q + 2));
+  return parm;
+}
+
 interface OptSurf {
   opj: number;
   curv: number;
@@ -589,7 +600,14 @@ export function convertOpjToZmx(o: OPJ, lib: GlassLibrary, opts: OpjToZmxOptions
     const ord = s.asphOrder;
     const fl = s.asphFloats;
     if (Math.abs(ord) === 2) surf.conic = -shortF32(fl[0]);
-    else if (ord !== 0 && fl.length >= 2) {
+    const exact = ord > 0 && fl.length >= 2 && fl[0] === 1 ? paraboloidParms(fl[1] || 1, fl.slice(2)) : null;
+    if (exact) {
+      surf.type = "EVENASPH";
+      surf.conic = -1;
+      surf.parm = exact;
+      const ha = fl[1] || 1;
+      rep.note(`surface ${s.opj}: OPAL U-type asphere with e²=1 -> EVENASPH, conic -1, coefficients copied` + (ha !== 1 ? ` and divided by HA^2j (HA=${fmtG(shortF32(ha))})` : ""));
+    } else if (ord !== 0 && fl.length >= 2) {
       const e2 = fl[0];
       const ha = fl[1] || 1;
       const coefs = fl.slice(2);

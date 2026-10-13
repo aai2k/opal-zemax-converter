@@ -89,7 +89,7 @@ export function modelGlassIndex(nd: number, vd: number, wl: number): number {
   return a + b / wl ** 2;
 }
 
-type SagInfo = { z: (r: number) => number; hasPoly: boolean; r2Term: number; odd: boolean };
+type SagInfo = { z: (r: number) => number; poly: [number, number][]; hasPoly: boolean; r2Term: number; odd: boolean };
 
 function sagFunction(s: Surface): SagInfo {
   let c = s.curv;
@@ -113,6 +113,7 @@ function sagFunction(s: Surface): SagInfo {
   };
   return {
     z,
+    poly,
     hasPoly: poly.some(([, a]) => a !== 0),
     r2Term: poly.find(([p]) => p === 2)?.[1] ?? 0,
     odd: poly.some(([p, a]) => a !== 0 && p % 2 !== 0),
@@ -135,13 +136,34 @@ function fitQ(c: number, e2: number, ha: number, rs: number[], zt: number[], m: 
   return Array.from({ length: m }, (_, j) => fixed.get(j)!);
 }
 
+// A paraboloid base (k = -1) plus even terms is OPAL's U-type with e2 = 1 and HA = 1, term by term.
+function copyParaboloidAsphere(s: Surface, scale: number, info: SagInfo, rep: Report): [number, number, number[]] {
+  const c = (s.curv + 2 * info.r2Term) / scale;
+  const hi = Math.max(0, ...info.poly.filter(([p, v]) => p >= 4 && v !== 0).map(([p]) => p));
+  const coef = new Map(info.poly);
+  const a: number[] = [];
+  for (let p = 4; p <= hi; p += 2) a.push(f32((coef.get(p) ?? 0) * scale ** (1 - p)));
+  if (!a.length) return [c, 2, [1]];
+  let msg = `surface ${s.num}: ${s.type} with conic -1 -> OPAL U-type, e2=1, HA=1, ${a.length} terms copied`;
+  const semi = s.diam * scale;
+  if (semi > 0) {
+    const check = [...Array.from({ length: 300 }, (_, i) => semi * Math.sqrt((i + 0.5) / 300)), semi];
+    const err = pyMax(check.map((r) => Math.abs(opalSagU(c, 1, 1, a, r) - info.z(r / scale) * scale)));
+    msg += ` (max sag error ${fmtE(err, 1)} mm)`;
+  }
+  rep.note(msg);
+  return [c, 2 + 2 * a.length, [1, 1, ...a]];
+}
+
 function fitAsphere(s: Surface, scale: number, opts: ZmxToOpjOptions, rep: Report): [number, number, number[]] {
-  const { z: zn, hasPoly, r2Term, odd } = sagFunction(s);
+  const info = sagFunction(s);
+  const { z: zn, hasPoly, r2Term, odd } = info;
   if (s.type === "COORDBRK") return [0, 0, []];
   if (!hasPoly) {
     if (s.conic === 0) return [s.curv / scale, 0, []];
     return [s.curv / scale, 2, [f32(-s.conic)]];
   }
+  if (s.conic === -1 && !odd) return copyParaboloidAsphere(s, scale, info, rep);
   let semi = s.diam * scale;
   if (semi <= 0) {
     semi = 10.0;
