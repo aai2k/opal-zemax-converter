@@ -167,7 +167,7 @@ interface OptSurf {
   dummy?: string;
 }
 
-function sanitizeCatalogName(fileName: string): string {
+export function sanitizeCatalogName(fileName: string): string {
   const base = fileName.replace(/^.*[\\/]/, "").replace(/\.[^.]*$/, "");
   const t = base.toUpperCase().replace(/[^A-Z0-9_-]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
   return "OPAL_" + (t || "SYSTEM").slice(0, 24);
@@ -197,7 +197,9 @@ export function mirrorZ(o: OPJ): OPJ {
   return f;
 }
 
-export function convertOpjToZmx(o: OPJ, lib: GlassLibrary, opts: OpjToZmxOptions, fileName = "system.opj"): OpjToZmxResult {
+export function convertOpjToZmx(
+  o: OPJ, lib: GlassLibrary, opts: OpjToZmxOptions, fileName = "system.opj", catalogName = sanitizeCatalogName(fileName),
+): OpjToZmxResult {
   const rep = new Report();
   if (o.media.length && o.media[0] < 0) {
     o = mirrorZ(o);
@@ -226,7 +228,6 @@ export function convertOpjToZmx(o: OPJ, lib: GlassLibrary, opts: OpjToZmxOptions
   const zGlass = new Map<number, ZmxGlass | null>();
   const customs: CustomGlass[] = [];
   const glassMap: GlassMapping[] = [];
-  const catalogName = sanitizeCatalogName(fileName);
   const wlStored = wl.slice(0, nidx);
   const ldRange: [number, number] = [Math.max(0.1, Math.min(...wl) - 0.01), Math.max(...wl) + 0.01];
   const media = [...new Set(o.media.map(Math.abs))].sort((x, y) => x - y);
