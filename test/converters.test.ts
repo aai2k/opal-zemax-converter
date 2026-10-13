@@ -86,6 +86,13 @@ test("OPJ -> ZMX -> OPJ with an exact companion catalog", () => {
     ia.forEach((n, j) => close(ib[j], n, 1e-12));
   }
   close(paraxialEfl(b), paraxialEfl(a), 1e-9);
+  const p = r.paraxial;
+  close(p.efl, paraxialEfl(a), 1e-9);
+  close(p.epd, 20, 1e-9);
+  close(p.fno, p.efl / 20, 1e-9);
+  close(p.fov, 10, 1e-9);
+  close(p.imageHeight, 2 * p.efl * Math.tan((5 * Math.PI) / 180), 1e-9);
+  assert.equal(p.naObject, 0);
   close(b.aperture[0], a.aperture[0], 1e-12);
   assert.deepEqual(b.beams!.vign, a.beams!.vign);
   const sa = opjSurfaceSag(a, 1), sb = opjSurfaceSag(b, 1);

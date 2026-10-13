@@ -29,12 +29,29 @@ export interface GlassMapping {
   maxError?: number;
 }
 
+/** First-order data of the converted system at the primary wavelength (mm, degrees). */
+export interface ParaxialData {
+  efl: number; // 1/power, Infinity when afocal
+  bfd: number; // paraxial image from OPAL's last surface
+  imageDistance: number; // image plane as converted, from OPAL's last surface; NaN when afocal
+  epd: number;
+  fno: number; // paraxial working F/#
+  naObject: number; // 0 for an object at infinity
+  naImage: number;
+  fieldType: number; // 0 angle, 1 object height, 2 paraxial image height
+  field: number; // largest field value
+  fov: number; // full object-space field angle seen from the entrance pupil
+  imageHeight: number; // full height on the paraxial image plane; NaN when afocal
+  magnification: number; // lateral for a finite object, angular when afocal, else NaN
+}
+
 export interface OpjToZmxResult {
   zmx: string;
   model: ZmxOut;
   agf?: { catalog: string; fileName: string; text: string };
   glasses: GlassMapping[];
   report: Report;
+  paraxial: ParaxialData;
 }
 
 /** Shortest decimal that rounds to the same float32 (values OPAL stored in single precision). */
@@ -683,7 +700,43 @@ export function convertOpjToZmx(o: OPJ, lib: GlassLibrary, opts: OpjToZmxOptions
     `stop: surface ${stopIdx + 1}; entrance pupil ${fmtG(zEp)} mm from OPAL surface 1; EFL ${fmtG(efl)} mm` +
       (ints.im === 1 && Number.isFinite(bfd) ? `; paraxial image ${fmtG(bfd)} mm after the last surface` : ""),
   );
-  const result: OpjToZmxResult = { zmx: writeZmxText(model), model, glasses: glassMap, report: rep };
+  const paraxial = ((): ParaxialData => {
+    const uImg = Math.abs(mScale * uL);
+    const pupilDist = finiteObj ? Math.abs(zEp - (zFirst - dObj)) : 0;
+    const field = Math.max(0, ...fields.map((f) => f.y));
+    let fov: number;
+    if (fieldType === 0) fov = 2 * field;
+    else if (fieldType === 1) fov = 2 * deg(Math.atan(field / pupilDist));
+    else if (!finiteObj) fov = Number.isFinite(efl) && efl ? 2 * deg(Math.atan(field / Math.abs(efl))) : Number.NaN;
+    else {
+      const m = paraxialMagnification(C, T, Nn, dObj);
+      fov = m ? 2 * deg(Math.atan(field / Math.abs(m) / pupilDist)) : Number.NaN;
+    }
+    let imageHeight = Number.NaN;
+    if (ints.im === 1) {
+      if (fieldType === 2) imageHeight = 2 * field;
+      else if (chiefScale) imageHeight = 2 * Math.abs(chiefScale.heights[iN] + (chiefScale.nu / Nn[M]) * bfd);
+      else imageHeight = 0;
+    }
+    let magnification = Number.NaN;
+    if (finiteObj) magnification = paraxialMagnification(C, T, Nn, dObj);
+    else if (ints.im === 0) magnification = trace(-zEpRel, 1).nu / Nn[M];
+    return {
+      efl: nuOut ? -1 / nuOut : Infinity,
+      bfd,
+      imageDistance: ints.im === 1 ? imgThick : Number.NaN,
+      epd: 2 * (finiteObj ? mScale * pupilDist : mScale),
+      fno: uImg ? 1 / (2 * nImg * uImg) : Infinity,
+      naObject: finiteObj ? n0 * Math.sin(Math.atan(mScale)) : 0,
+      naImage: nImg * Math.sin(Math.atan(uImg)),
+      fieldType,
+      field,
+      fov,
+      imageHeight,
+      magnification,
+    };
+  })();
+  const result: OpjToZmxResult = { zmx: writeZmxText(model), model, glasses: glassMap, report: rep, paraxial };
   if (customs.length)
     result.agf = {
       catalog: catalogName,
